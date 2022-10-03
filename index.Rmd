@@ -1,0 +1,18 @@
+---
+title: "Homework 3"
+author: "Adam Kiehl"
+date: "2022-10-03"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+- data source
+- spatial units being displayed
+- what you are trying to communicate
+- what decisions you made and why you made those to best communicate the data.
+
+
