@@ -1,18 +1,270 @@
 ---
-title: "Homework 3"
+title: "Maps"
 author: "Adam Kiehl"
 date: "2022-10-03"
-output: pdf_document
+output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
+library(tidyverse) # ggplot and dplyr
+library(maps) # map plotting data
+library(mapproj) # coordinate projection
+library(ggdendro) # simple map theme
+library(viridis) # color palettes
+library(plotly) # interactive plot effects
+library(gridExtra) # grid plotting
 ```
 
-- data source
-- spatial units being displayed
-- what you are trying to communicate
-- what decisions you made and why you made those to best communicate the data.
+`Data Source:` The data for the below plots were downloaded from the World University Ranking 2022-2023 open source data set on Kaggle.com (https://www.kaggle.com/datasets/4c5d5aecdebdec38eee4f9de4546e92868be0f4dc1b0351078b307acec179158?resource=download). World universities were scored and ranked based on their rankings in four categories: education quality, post-graduation employability, faculty quality, and research prestige. 
+  
+`Spatial Units:` Countries were the spatial units chosen for the plots below. University scores and category rankings were aggregated by country to match this unit. 
+  
+`Purpose:` The plots below were generated to convey a sense of holistic higher education quality in countries across the world. First and primarily, median university score per country was plotted to give the best overall sense of a country's collegiate quality. Next, each of the four category rankings used to compute this overall score (education quality, post-graduation employability, faculty quality, and research prestige) were aggregated by country and plotted as well. This serves to show how each country's specific collegiate strengths contribute to it's overall score and may illuminate some surprising aspects of the data.
+  
+`Decisions:` Several decisions were made in the process of the plotting this university ranking data. First, since the spatial composition of the map did not play a factor in the comparisons of interest to this problem, a simple, aesthetically pleasing projection similar to the Robinson projection was used, and a simple white theme was used to maximize the data$\colon$ink ratio. Next, median was chosen as a measure of central tendency over mean so that extremely prestigious outlying universities (such as Harvard) were not overly influential. Next, it was decided that each aggregated category ranking should be plotted in addition to the aggregated overall university score, since plotting different aspects of the data can tell different stories. For these plots, the legend scales and color palettes were reversed because, in these cases, a lower number is more desirable. It was additionally decided that the four category plots should be plotted in a 2-by-2 frame to emphasize their nature as categories contributing to a whole score. Finally, an interactive hover effect was added to the main plot to easily display the exact median university score for each country and to allow users to zoom in on smaller countries. 
+  
+```{r, warning=FALSE}
+# read in university ratings data
+univ_data <- read.csv('university.csv') %>%
+  mutate(Education = as.numeric(Education.Rank),
+         Employ = as.numeric(Employability.Rank),
+         Faculty = as.numeric(Faculty.Rank),
+         Research = as.numeric(Research.Rank)) %>%
+  select(-c(Education.Rank,
+            Employability.Rank,
+            Faculty.Rank,
+            Research.Rank))
+# fix unaligned regions between data frames
+univ_data$Location[which(univ_data$Location == 'Northern Cyprus')] <- 'Cyprus'
+univ_data$Location[which(univ_data$Location == 'Slovak Republic')] <- 'Slovakia'
+univ_data$Location[which(univ_data$Location == 'United Kingdom')] <- 'UK'
 
+head(univ_data)
 
+# read world map polygon data
+world_map <- map_data('world') %>%
+  # create variable to preserve order
+  mutate(order = 1:n())
+```
+
+```{r}
+# create aggregated scores data frame
+univ_score <- univ_data %>%
+  # aggregate scores by country
+  group_by(Location) %>%
+  # compute median scores
+  summarize(Score = median(Score, na.rm = TRUE))
+
+# left join world map data with university scores data
+data1 <- world_map %>%
+  merge(univ_score, 
+        by.x = 'region', 
+        by.y = 'Location', 
+        all.x = TRUE) %>%
+  # sort result by order variable
+  arrange(order)
+
+# build median scores choropleth plot
+plt1 <- ggplot(data1,
+              mapping = aes(x = long, 
+                            y = lat,
+                            group = group,
+                            # add choropleth data
+                            fill = Score,
+                            # add text aesthetic for hover effect
+                            text = paste(region, ': ', round(Score, 1), sep = ''))) +
+  # draw map in white
+  geom_polygon(color = 'white', size = .05) +
+  # scale map to proper coordinates
+  coord_map(xlim = c(-200, 200),
+            ylim = c(-100, 100)) +
+  # choose a minimal theme
+  theme_dendro() +
+  # choose color palette
+  scale_fill_viridis(option = 'G') +
+  # add legend title
+  labs(fill = 'Median\nUniversity\nScore')
+
+# add interactive hover effect
+plt1 <- ggplotly(plt1, tooltip = 'text') %>%
+  # add plot title and subtitle
+  layout(title = list(text = paste0('<br>',
+                                    'Median University Rating by Country',
+                                    '<br>',
+                                    '<sup>',
+                                    'University rating based on education, employability, faculty, and research',
+                                    '<sup>')))
+
+# display first plot
+plt1
+```
+
+```{r}
+# create aggregated ranks data frame
+univ_edu <- univ_data %>%
+  # aggregate ranks by country
+  group_by(Location) %>%
+  # compute median education ranks
+  summarize(Education = median(Education, na.rm = TRUE))
+
+# left join world map data with university education ranks
+data2 <- world_map %>%
+  merge(univ_edu, 
+        by.x = 'region', 
+        by.y = 'Location', 
+        all.x = TRUE) %>%
+  # sort result by order variable
+  arrange(order)
+
+# build median education ranks choropleth plot
+plt2 <- ggplot(data2,
+              mapping = aes(x = long, 
+                            y = lat,
+                            group = group,
+                            # add choropleth data
+                            fill = Education)) +
+  # draw map in white
+  geom_polygon(color = 'white', size = .05) +
+  # scale map to proper coordinates
+  coord_map(xlim = c(-200, 200),
+            ylim = c(-100, 100)) +
+  # choose a minimal theme
+  theme_dendro() +
+  # choose color palette
+  scale_fill_viridis(option = 'F', direction = -1) +
+  # reverse order of legend scale
+  guides(fill = guide_legend(reverse = FALSE)) +
+  # add title and legend title
+  labs(title = 'Education',
+       fill = 'Median\nUniversity\nEducation\nRank')
+```
+
+```{r}
+# create aggregated ranks data frame
+univ_employ <- univ_data %>%
+  # aggregate ranks by country
+  group_by(Location) %>%
+  # compute median employability ranks
+  summarize(Employ = median(Employ, na.rm = TRUE))
+
+# left join world map data with university employability ranks
+data3 <- world_map %>%
+  merge(univ_employ, 
+        by.x = 'region', 
+        by.y = 'Location', 
+        all.x = TRUE) %>%
+  # sort result by order variable
+  arrange(order)
+
+# build median employability ranks choropleth plot
+plt3 <- ggplot(data3,
+              mapping = aes(x = long, 
+                            y = lat,
+                            group = group,
+                            # add choropleth data
+                            fill = Employ)) +
+  # draw map in white
+  geom_polygon(color = 'white', size = .05) +
+  # scale map to proper coordinates
+  coord_map(xlim = c(-200, 200),
+            ylim = c(-100, 100)) +
+  # choose a minimal theme
+  theme_dendro() +
+  # choose color palette
+  scale_fill_viridis(option = 'F', direction = -1) +
+  # reverse order of legend scale
+  guides(fill = guide_legend(reverse = FALSE)) +
+  # add title and legend title
+  labs(title = 'Employability',
+       fill = 'Median\nUniversity\nEmployability\nRank')
+```
+
+```{r}
+# create aggregated ranks data frame
+univ_faculty <- univ_data %>%
+  # aggregate ranks by country
+  group_by(Location) %>%
+  # compute median faculty ranks
+  summarize(Faculty = median(Faculty, na.rm = TRUE))
+
+# left join world map data with university faculty ranks
+data4 <- world_map %>%
+  merge(univ_faculty, 
+        by.x = 'region', 
+        by.y = 'Location', 
+        all.x = TRUE) %>%
+  # sort result by order variable
+  arrange(order)
+
+# build median faculty ranks choropleth plot
+plt4 <- ggplot(data4,
+              mapping = aes(x = long, 
+                            y = lat,
+                            group = group,
+                            # add choropleth data
+                            fill = Faculty)) +
+  # draw map in white
+  geom_polygon(color = 'white', size = .05) +
+  # scale map to proper coordinates
+  coord_map(xlim = c(-200, 200),
+            ylim = c(-100, 100)) +
+  # choose a minimal theme
+  theme_dendro() +
+  # choose color palette
+  scale_fill_viridis(option = 'F', direction = -1) +
+  # reverse order of legend scale
+  guides(fill = guide_legend(reverse = FALSE)) +
+  # add title and legend title
+  labs(title = 'Faculty',
+       fill = 'Median\nUniversity\nFaculty\nRank')
+```
+
+```{r}
+# create aggregated ranks data frame
+univ_research <- univ_data %>%
+  # aggregate ranks by country
+  group_by(Location) %>%
+  # compute median faculty ranks
+  summarize(Research = median(Research, na.rm = TRUE))
+
+# left join world map data with university research ranks
+data5 <- world_map %>%
+  merge(univ_research, 
+        by.x = 'region', 
+        by.y = 'Location', 
+        all.x = TRUE) %>%
+  # sort result by order variable
+  arrange(order)
+
+# build median research ranks choropleth plot
+plt5 <- ggplot(data5,
+              mapping = aes(x = long, 
+                            y = lat,
+                            group = group,
+                            # add choropleth data
+                            fill = Research)) +
+  # draw map in white
+  geom_polygon(color = 'white', size = .05) +
+  # scale map to proper coordinates
+  coord_map(xlim = c(-200, 200),
+            ylim = c(-100, 100)) +
+  # choose a minimal theme
+  theme_dendro() +
+  # choose color palette
+  scale_fill_viridis(option = 'F', direction = -1) +
+  # reverse order of legend scale
+  guides(fill = guide_legend(reverse = FALSE)) +
+  # add title and legend title
+  labs(title = 'Research',
+       fill = 'Median\nUniversity\nResearch\nRank')
+```
+
+```{r}
+# display category plots
+grid.arrange(plt2, plt3, plt4, plt5,
+             # define plotting grid
+             ncol = 2,
+             # add title to grid
+             top = 'Median Category Rankings')
+```
